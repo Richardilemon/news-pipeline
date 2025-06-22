@@ -3,6 +3,8 @@ on:
   schedule:
     - cron: '0 11 * * *'  # Daily at 11:00 AM UTC (12:00 PM WAT)
   workflow_dispatch:
+permissions:
+  contents: write  # Allow workflow to push changes
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
@@ -19,9 +21,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Set up credentials
-        run: echo "$GOOGLE_CREDENTIALS" > credentials.json
+        run: echo "$GOOGLE_CREDENTIALS_JSON" > credentials.json
         env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
       - name: Run pipeline
         run: python3 main.py
         env:
