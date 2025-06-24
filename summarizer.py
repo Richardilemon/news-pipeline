@@ -1,7 +1,5 @@
 import os
 import logging
-import requests
-from bs4 import BeautifulSoup
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -23,65 +21,25 @@ if not OPENAI_API_KEY:
 # Initialize OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-def fetch_article_content(url):
+def summarize_article(article):
     """
-    Fetch and extract article text from a given URL.
+    Summarize article using OpenAI API based on headline and metadata.
     
     Args:
-        url: URL of the article.
+        article: Dictionary with headline, source, url, category, date.
     
     Returns:
-        str: Extracted article text or None if failed.
-    """
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
-    }
-    try:
-        logger.debug(f"Fetching article: {url}")
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        # Target article body (adjust selector based on Ground.news structure)
-        article_body = soup.select_one('article, div.content, div.article-body')
-        if not article_body:
-            logger.warning(f"No article body found for {url}")
-            return None
-        
-        # Extract paragraphs
-        paragraphs = article_body.find_all('p')
-        if not paragraphs:
-            logger.warning(f"No paragraphs found for {url}")
-            return None
-        
-        # Combine text, limiting to ~2000 tokens (~8000 chars) for API
-        text = ' '.join(p.get_text().strip() for p in paragraphs if p.get_text().strip())
-        text = text[:8000]  # Truncate to avoid API limits
-        if not text:
-            logger.warning(f"No valid text extracted for {url}")
-            return None
-        
-        logger.debug(f"Extracted {len(text)} characters from {url}")
-        return text
-    except Exception as e:
-        logger.error(f"Error fetching article {url}: {e}")
-        return None
-
-def summarize_article(text):
-    """
-    Summarize article text using OpenAI API.
-    
-    Args:
-        text: Article text to summarize.
-    
-    Returns:
-        str: Summary (2-3 sentences) or None if failed.
+        str: Summary (2-3 sentences) or default if failed.
     """
     try:
-        logger.debug("Sending text to OpenAI for summarization")
+        logger.debug(f"Summarizing article: {article['headline'][:50]}...")
         prompt = (
-            "Summarize the following article in 2-3 concise sentences, focusing on the main points. "
-            "Keep the summary under 100 words:\n\n" + text
+            "Summarize the following news article in 2-3 concise sentences based on its headline, category, and source. "
+            "Focus on key events and potential locations, keeping the summary under 100 words.\n\n"
+            f"Headline: {article['headline']}\n"
+            f"Category: {article['category']}\n"
+            f"Source: {article['source']}\n"
+            f"URL: {article['url']}"
         )
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -94,17 +52,17 @@ def summarize_article(text):
         )
         summary = response.choices[0].message.content.strip()
         logger.debug(f"Generated summary: {summary[:50]}...")
-        return summary
+        return summary if summary else 'No summary available.'
     except Exception as e:
         logger.error(f"Error summarizing article: {e}")
-        return None
+        return 'No summary available.'
 
 def summarize_articles(articles):
     """
     Add summaries to a list of articles.
     
     Args:
-        articles: List of dictionaries with headline, source, url, category.
+        articles: List of dictionaries with headline, source, url, category, date.
     
     Returns:
         List of dictionaries with added summary field.
@@ -113,18 +71,7 @@ def summarize_articles(articles):
     for index, article in enumerate(articles, 1):
         try:
             logger.info(f"Processing article {index}: {article['headline'][:50]}...")
-            content = fetch_article_content(article['url'])
-            if not content:
-                logger.warning(f"Skipping article {index} due to no content")
-                summarized_articles.append({**article, 'summary': None})
-                continue
-            
-            summary = summarize_article(content)
-            if not summary:
-                logger.warning(f"Skipping summary for article {index}")
-                summarized_articles.append({**article, 'summary': None})
-                continue
-            
+            summary = summarize_article(article)
             summarized_articles.append({
                 **article,
                 'summary': summary
@@ -132,32 +79,32 @@ def summarize_articles(articles):
             logger.info(f"Summarized article {index}: {summary[:50]}...")
         except Exception as e:
             logger.error(f"Error processing article {index}: {e}")
-            summarized_articles.append({**article, 'summary': None})
-            continue
+            summarized_articles.append({**article, 'summary': 'No summary available.'})
     
+    logger.info(f"Summarized {len(summarized_articles)} articles.")
     return summarized_articles
 
 def main():
     """Main function to test the summarizer with sample data."""
-    # Sample input from scraper.py (replace with actual scraper output)
     sample_articles = [
         {
             'headline': 'UK parliament votes for assisted dying paving way for historic law change',
             'source': '43% Center coverage: 222 sources',
             'url': 'https://ground.news/article/uk-parliament-votes-for-assisted-dying-paving-way-for-historic-law-change_81cdb3',
-            'category': 'UK'
+            'category': 'UK',
+            'date': '2025-06-23 18:42:30'
         },
         {
             'headline': 'Trump to decide on US action in Israel-Iran conflict within two weeks, White House says',
             'source': '37% Right coverage: 73 sources',
             'url': 'https://ground.news/article/trump-to-decide-on-us-action-in-israel-iran-conflict-within-two-weeks-white-house-says_53e046',
-            'category': 'Israel-Hamas Conflict'
+            'category': 'Israel-Hamas Conflict',
+            'date': '2025-06-23 18:42:30'
         }
     ]
     
     summarized_articles = summarize_articles(sample_articles)
     
-    # Print results
     if not summarized_articles:
         logger.warning("No articles summarized.")
     else:
@@ -168,7 +115,7 @@ def main():
             print(f"Source: {item['source']}")
             print(f"URL: {item['url']}")
             print(f"Summary: {item['summary']}")
-            print("-" * 50)
+            print("-" * 100)
 
 if __name__ == "__main__":
     main()

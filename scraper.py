@@ -9,7 +9,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 from webdriver_manager.chrome import ChromeDriverManager
-from datetime import datetime  # Added for date
+from datetime import datetime
 
 # Set up logging
 logging.basicConfig(
@@ -45,13 +45,12 @@ def scrape_ground_news(keywords, max_articles=50, source_type='coverage'):
         source_type: 'coverage' for bias coverage, 'category' for category.
     
     Returns:
-        List of dictionaries with headline, source, URL, category, and date.
+        List of dictionaries with headline, source, URL, category, and timestamp.
     """
     base_url = "https://ground.news"
     news_data = []
     seen_urls = set()
     seen_headlines = set()
-    scrape_date = datetime.now().strftime('%Y-%m-%d')  # Added: Current date as YYYY-MM-DD
 
     # Set up headless Chrome
     options = Options()
@@ -93,7 +92,7 @@ def scrape_ground_news(keywords, max_articles=50, source_type='coverage'):
             try:
                 logger.debug(f"Processing article {index+1}")
                 # Extract headline
-                headline_elem = article.select_one('h2:not(.hidden), h4') or article.select_one('h2, h4')
+                headline_elem = article.select_one('h2:not(.hidden), h4, .headline')
                 headline = headline_elem.text.strip() if headline_elem else None
                 if not headline:
                     logger.debug("Skipping article with no valid headline")
@@ -142,29 +141,33 @@ def scrape_ground_news(keywords, max_articles=50, source_type='coverage'):
                 # Extract source
                 source = 'Unknown'
                 if source_type == 'coverage':
-                    source_elem = article.select_one('div.text-12.leading-6 > span')
-                    if source_elem:
-                        source = source_elem.text.strip()
-                    else:
-                        source_elem = article.select_one('span.text-12.leading-6')
-                        if source_elem:
-                            source = source_elem.text.strip()
+                    source_elem = article.select_one('div.text-12.leading-6 > span, span.text-12.leading-6, .source-info')
+                    source = source_elem.text.strip() if source_elem else 'Unknown'
                 else:
-                    source_elem = article.select_one('span.text-12.leading-6')
-                    if source_elem:
-                        source = source_elem.text.strip()
-                    else:
-                        source_elem = article.select_one('div.text-12.leading-6 > span')
-                        if source_elem:
-                            source = source_elem.text.strip()
+                    source_elem = article.select_one('span.text-12.leading-6, div.text-12.leading-6 > span')
+                    source = source_elem.text.strip() if source_elem else 'Unknown'
                 logger.debug(f"Source found: {source}")
+
+                # Extract publication timestamp
+                time_elem = article.select_one('time[datetime], .published-date, span.date')
+                if time_elem and time_elem.get('datetime'):
+                    try:
+                        date_str = time_elem.get('datetime')
+                        timestamp = datetime.strptime(date_str, '%Y-%m-%dT%H:%M:%SZ').strftime('%Y-%m-%d %H:%M:%S')
+                        logger.debug(f"Publication timestamp: {timestamp}")
+                    except ValueError:
+                        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        logger.debug(f"Invalid datetime format, using: {timestamp}")
+                else:
+                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    logger.debug(f"No publication timestamp, using: {timestamp}")
 
                 news_data.append({
                     'headline': headline,
                     'source': source,
                     'url': url,
                     'category': matching_keyword,
-                    'date': scrape_date  # Added: Date field
+                    'timestamp': timestamp  # Renamed from 'date'
                 })
                 logger.info(f"Scraped article: {headline} ({matching_keyword})")
             except Exception as e:
@@ -176,6 +179,7 @@ def scrape_ground_news(keywords, max_articles=50, source_type='coverage'):
     finally:
         driver.quit()
 
+    logger.info(f"Scraped {len(news_data)} articles.")
     return news_data
 
 def main():
@@ -183,18 +187,17 @@ def main():
     keywords = load_keywords()
     news_data = scrape_ground_news(keywords, source_type='coverage')
     
-    # Print results for verification
     if not news_data:
         logger.warning("No articles scraped. Please check selectors, keywords, or site structure.")
     else:
         logger.info(f"Scraped {len(news_data)} articles:")
         for item in news_data:
-            print(f"Date: {item['date']}")  # Added: Display date
+            print(f"Timestamp: {item['timestamp']}")
             print(f"Category: {item['category']}")
             print(f"Headline: {item['headline']}")
             print(f"Source: {item['source']}")
             print(f"URL: {item['url']}")
-            print("-" * 50)
+            print("-" * 100)
 
 if __name__ == "__main__":
     main()

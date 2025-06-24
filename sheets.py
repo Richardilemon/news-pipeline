@@ -46,7 +46,7 @@ def store_articles(articles, credentials_path, spreadsheet_name):
     Store articles in a Google Sheet.
     
     Args:
-        articles: List of dictionaries with date, category, headline, source, url, summary.
+        articles: List of dictionaries with timestamp, category, headline, source, url, summary.
         credentials_path: Path to Google service account JSON key file.
         spreadsheet_name: Name of the Google Sheet.
     
@@ -64,7 +64,7 @@ def store_articles(articles, credentials_path, spreadsheet_name):
         except gspread.SpreadsheetNotFound:
             logger.info(f"Creating new spreadsheet: {spreadsheet_name}")
             spreadsheet = client.create(spreadsheet_name)
-            # Share with your email (optional, for manual access)
+            # Share with your email (optional, uncomment if needed)
             # spreadsheet.share('your-email@example.com', perm_type='user', role='writer')
 
         # Select or create worksheet
@@ -74,28 +74,28 @@ def store_articles(articles, credentials_path, spreadsheet_name):
             logger.info("Creating new worksheet: Articles")
             worksheet = spreadsheet.add_worksheet(title='Articles', rows=1000, cols=6)
             # Set headers
-            headers = ['Date', 'Category', 'Headline', 'Source', 'URL', 'Summary']
+            headers = ['Headline', 'Source', 'URL', 'Category', 'Summary', 'Timestamp']
             worksheet.append_row(headers, table_range='A1:F1')
 
         # Get existing URLs to avoid duplicates
-        existing_urls = set(worksheet.col_values(5)[1:])  # Column E (URL), skip header
+        existing_urls = set(worksheet.col_values(3)[1:])  # Column C (URL), skip header
 
         # Prepare rows to append
         rows_to_append = []
         for article in articles:
-            if article['url'] in existing_urls:
-                logger.debug(f"Skipping duplicate article: {article['headline'][:50]}...")
+            if article.get('url') in existing_urls:
+                logger.debug(f"Skipping duplicate article: {article.get('headline', 'Unknown')[:50]}...")
                 continue
             row = [
-                article.get('date', ''),
-                article.get('category', ''),
                 article.get('headline', ''),
                 article.get('source', ''),
                 article.get('url', ''),
-                article.get('summary', '')
+                article.get('category', ''),
+                article.get('summary', 'No summary available.'),
+                article.get('timestamp', '')
             ]
             rows_to_append.append(row)
-            existing_urls.add(article['url'])
+            existing_urls.add(article.get('url'))
 
         if not rows_to_append:
             logger.info("No new articles to append.")
@@ -113,10 +113,9 @@ def store_articles(articles, credentials_path, spreadsheet_name):
 
 def main():
     """Main function to test the Google Sheets output with sample data."""
-    # Sample input from summarizer.py (replace with actual output)
     sample_articles = [
         {
-            'date': '2025-06-22',
+            'timestamp': '2025-06-23 18:42:30',
             'category': 'UK',
             'headline': 'UK parliament votes for assisted dying paving way for historic law change',
             'source': '43% Center coverage: 222 sources',
@@ -124,7 +123,7 @@ def main():
             'summary': 'The UK Parliament voted to legalize assisted dying, a historic step toward law reform.'
         },
         {
-            'date': '2025-06-22',
+            'timestamp': '2025-06-23 18:42:30',
             'category': 'Israel-Hamas Conflict',
             'headline': 'Trump to decide on US action in Israel-Iran conflict within two weeks, White House says',
             'source': '37% Right coverage: 73 sources',

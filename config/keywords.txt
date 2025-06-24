@@ -6,3 +6,4 @@ climate
 UK
 US
 Israeli
+Trump
